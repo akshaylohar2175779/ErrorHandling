@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="6489e0aa-9a62-4ac9-94f7-8ee725d73f76" basePath="UpdateEmp" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="8574d0fc-7366-4605-baf8-86d8710e6413" >
+		<db:oracle-connection host="localhost" user="system" password="admin" instance="xe" port="1527"/>
+	</db:config>
+	<http:listener-config name="HTTP_Listener_config1" doc:name="HTTP Listener config" doc:id="7dbd6b29-0431-4929-95f9-cc4b4e1c9888" basePath="SelectEmp" >
+		<http:listener-connection host="0.0.0.0" port="8091" />
+	</http:listener-config>
+	<xml-module:config name="XML_Config" doc:name="XML Config" doc:id="ef1dc248-20e4-44a4-b527-52d793dd192a" />
+	<flow name="updateempFlow" doc:id="23a88c92-f2b5-4b41-8132-471d4e1a48fb" >
+		<http:listener doc:name="Listener" doc:id="300b3b4c-ebbe-4a9c-b1ce-d292ef55e045" path="data" config-ref="HTTP_Listener_config"/>
+		<logger level="INFO" doc:name="Logger" doc:id="45b90eb0-2618-424e-8351-87f09d59edcb" message="#['process start']"/>
+		<logger level="INFO" doc:name="Logger" doc:id="ca5b884c-bf39-408f-886b-6899e5ceb53f" message="#[payload.employee.employeeStatus]"/>
+		<logger level="INFO" doc:name="Logger" doc:id="cf22bde9-8498-471a-96c5-f38318b27669" message="#[payload.employee.employeeID]"/>
+		<db:update doc:name="Update" doc:id="e9502f48-0c62-49d8-afad-f38cd67cc4b0" config-ref="Database_Config">
+			<db:sql ><![CDATA[UPDATE emp2 set empstatus =:status where empid =:id]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	status: payload.employee.employeeStatus, 
+	id : payload.employee.employeeID
+}]]]></db:input-parameters>
+		</db:update>
+		<logger level="INFO" doc:name="Logger" doc:id="42905d31-fb6e-4b61-97f6-591513bce9a9" message="#['end']"/>
+	</flow>
+	<flow name="updateempFlow1" doc:id="91071bc0-502f-48a1-8fab-ee1835daa433" >
+		<http:listener doc:name="Listener" doc:id="20be10bb-3d27-43b9-af2d-f71607fd5921" config-ref="HTTP_Listener_config1" path="data">
+			<http:error-response statusCode="#['800']" reasonPhrase="#['bad req']">
+				<http:body ><![CDATA[#[payload]]]></http:body>
+			</http:error-response>
+		</http:listener>
+		<ee:transform doc:name="Transform Message" doc:id="f4c8754a-8991-47de-b468-8596a70e158b" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+---
+{
+	employee: {
+		employeeID: payload.employee.employeeID
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<xml-module:validate-schema doc:name="Validate schema" doc:id="3e6b99b3-3572-4a59-88fb-2c73f139834e" config-ref="XML_Config" schemas="schemas\zz.txt"/>
+		<db:select doc:name="Select" doc:id="e922ee49-e382-43dd-a408-6b732f332b93" config-ref="Database_Config">
+			<db:sql ><![CDATA[select * from emp2 where empid=:id]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	id: payload.employee.employeeID
+}]]]></db:input-parameters>
+		</db:select>
+		<logger level="INFO" doc:name="Logger" doc:id="513ab198-614b-4a88-8ee1-d67cda19a3c0" message="#[payload]"/>
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="7235c21d-2ced-4511-81d6-348ea5b019ba" type="DB:CONNECTIVITY">
+				<logger level="INFO" doc:name="Logger" doc:id="d024dd70-4a26-46b3-afb9-2653d7e2d2ac" message="#['errormd']" />
+				<ee:transform doc:name="Transform Message" doc:id="9711f489-a05a-4b6c-a021-ecb068626c46">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+ 
+    "code": 400,
+    "message": "There is issue in connected to DB",
+   
+   
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="195a8056-1fe3-40d3-81d5-6c04fe48c933" type="XML-MODULE:INVALID_INPUT_XML, XML-MODULE:INVALID_SCHEMA, XML-MODULE:SCHEMA_INPUT_ERROR, XML-MODULE:SCHEMA_NOT_FOUND, XML-MODULE:SCHEMA_NOT_HONOURED, XML-MODULE:TRANSFORMATION">
+				<logger level="INFO" doc:name="Logger" doc:id="50dd6030-4ee3-4edb-b2a7-85dfa466ccbf" message="#['error']" />
+				<ee:transform doc:name="Transform Message" doc:id="34de4741-048b-4635-bfc7-6cada71ad74e" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+ 
+    "code": 101,
+    "message": "Invalid input",
+   
+   
+}
+]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+</mule>
